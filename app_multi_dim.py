@@ -17,7 +17,7 @@ np.random.seed(42)
 k = 3  # Input dimension (can be any positive integer now!)
 exponent = 1.5
 decay_rate = -4
-N_initial = 5000  # Initial number of samples before filtering
+N_initial = 20000  # Initial number of samples before filtering
 volume_ratio = (math.pi / 4)**(k / 2) / math.gamma(k / 2 + 1)
 N_initial = int(N_initial / volume_ratio)
 # Generate k-dimensional input data
@@ -79,36 +79,36 @@ all_losses = [[float('inf') for _ in range(n_training_run)] for _ in range(max_l
 hidden_layer_width = 32  # Increased for higher dimensions
 criterion = nn.MSELoss()
 
-for i in range(max_layers):
-    print(f"Training model with {i+1} hidden layer(s)")
+# for i in range(max_layers):
+#     print(f"Training model with {i+1} hidden layer(s)")
 
-    for j in range(n_training_run):
-        print(f"  Training trial {j+1}")
-        num_hidden_layers = i
+#     for j in range(n_training_run):
+#         print(f"  Training trial {j+1}")
+#         num_hidden_layers = i
 
-        model = Net(input_size=k, hidden_layer_width=hidden_layer_width, 
-                    num_hidden_layers=num_hidden_layers, output_size=1)
+#         model = Net(input_size=k, hidden_layer_width=hidden_layer_width, 
+#                     num_hidden_layers=num_hidden_layers, output_size=1)
 
-        optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0)
+#         optimizer = optim.AdamW(model.parameters(), lr=1e-3, weight_decay=0.0)
 
-        num_epochs = 10000
+#         num_epochs = 10000
 
-        for epoch in range(num_epochs):
-            optimizer.zero_grad()
-            outputs = model(X)
-            loss = criterion(outputs, Y)
-            loss.backward()
-            optimizer.step()
+#         for epoch in range(num_epochs):
+#             optimizer.zero_grad()
+#             outputs = model(X)
+#             loss = criterion(outputs, Y)
+#             loss.backward()
+#             optimizer.step()
 
-            if loss.item() < best_losses[i]:
-                best_losses[i] = loss.item()
-                best_models[i] = copy.deepcopy(model)
-                torch.save(model.state_dict(), f"best_model_{i}_dim{k}.pt")
+#             if loss.item() < best_losses[i]:
+#                 best_losses[i] = loss.item()
+#                 best_models[i] = copy.deepcopy(model)
+#                 torch.save(model.state_dict(), f"best_model_{i}_dim{k}.pt")
             
-            if loss.item() < all_losses[i][j]:
-                all_losses[i][j] = loss.item()
+#             if loss.item() < all_losses[i][j]:
+#                 all_losses[i][j] = loss.item()
     
-    print(f"Finished training for {i+1} hidden layer(s). Best loss: {best_losses[i]:.6f}")
+#     print(f"Finished training for {i+1} hidden layer(s). Best loss: {best_losses[i]:.6f}")
 
 # Edge Bias Visualization
 fig, axes = plt.subplots(2, 3, figsize=(15, 10))
@@ -122,7 +122,7 @@ for i, model in enumerate(best_models):
     if model is None:
         model = Net(input_size=k, hidden_layer_width=hidden_layer_width, 
                    num_hidden_layers=i, output_size=1)
-        model.load_state_dict(torch.load(f"best_model_{i}_dim{k}.pt"))
+        model.load_state_dict(torch.load(f"best_model_{i}_dim{k}.pt", map_location=torch.device('cpu')))
     
     model.eval()
     ax = axes[i]

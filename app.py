@@ -10,6 +10,7 @@ import copy
 # Set seeds for reproducibility
 # torch.manual_seed(42)
 np.random.seed(42)
+batch_size = 128
 exponent = 1
 decay_rate = -4
 N = 500
@@ -22,7 +23,7 @@ x.sort(axis=0)
 
 # Target function: sine-based function of x
 # y = np.random.normal(0, 1, (N, 1))
-y = np.cos(np.pi * abs(x)**exponent * 15)+2.71828**(decay_rate*abs(x))*2
+y = np.cos(np.pi * abs(x)**exponent * 15)
 data = x # Data is just x now
 
 X = torch.from_numpy(data).float()
@@ -71,19 +72,23 @@ for i in range(max_layers):
         num_epochs = 10000
 
         for epoch in range(num_epochs):
+            random_indices = torch.randperm(N)[:batch_size]
             optimizer.zero_grad()
-            outputs = model(X)
-            loss = criterion(outputs, Y)
+            outputs = model(X[random_indices])
+            loss = criterion(outputs, Y[random_indices])
             loss.backward()
             optimizer.step()
 
-            if loss.item() < best_losses[i]:
-                best_losses[i] = loss.item()
-                best_models[i] = copy.deepcopy(model)
-                torch.save(model.state_dict(), f"best_model_{i}.pt")
-            
-            if loss.item() < all_losses[i][k]:
-                all_losses[i][k] = loss.item()
+            if epoch % 100 == 0:
+                outputs = model(X)
+                loss = criterion(outputs, Y)
+                if loss.item() < best_losses[i]:
+                    best_losses[i] = loss.item()
+                    best_models[i] = copy.deepcopy(model)
+                    torch.save(model.state_dict(), f"best_model_{i}.pt")
+                
+                if loss.item() < all_losses[i][k]:
+                    all_losses[i][k] = loss.item()
     print(f"Finished training for {i+1} hidden layer(s). Best loss: {best_losses[i]:.6f}")
 
 
