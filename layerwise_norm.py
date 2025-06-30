@@ -7,7 +7,7 @@ import copy
 
 N = 500
 x = np.linspace(-1., 1., N).reshape(-1, 1)
-y = np.cos(np.pi * abs(x) * 15)  # Fixed the exponent syntax
+y = np.cos(np.pi * abs(x)**1.5 * 15)  # Fixed the exponent syntax
 activation = nn.GELU
 
 class Net(nn.Module):
@@ -50,12 +50,12 @@ class Net(nn.Module):
 
 n_training_run = 4
 num_hidden_layers = 2
-hidden_layer_width = 16  # width of each hidden layer
+hidden_layer_width = 32  # width of each hidden layer
 model = Net(input_size=1, hidden_layer_width=hidden_layer_width,
            num_hidden_layers=num_hidden_layers, output_size=1)
 
 # Load the trained model
-model.load_state_dict(torch.load(f"best_model_{num_hidden_layers}.pt"))
+model.load_state_dict(torch.load(f"best_model_{num_hidden_layers}_dim1.pt"))
 
 grid_tensor = torch.from_numpy(x).float()
 model.eval()

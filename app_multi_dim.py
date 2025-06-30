@@ -9,34 +9,33 @@ import copy
 from collections import defaultdict
 import math
 
+def ReLU(x):
+    return x * (x > 0)
+
 # Set seeds for reproducibility
 torch.manual_seed(42)
 np.random.seed(42)
 
 # Hyperparameters
-k = 3  # Input dimension (can be any positive integer now!)
-exponent = 1.5
+k = 3 # Input dimension (can be any positive integer now!)
+exponent = 1.0
 decay_rate = -4
-N_initial = 20000  # Initial number of samples before filtering
+N_initial = 1e5  # Initial number of samples before filtering
 volume_ratio = (math.pi / 4)**(k / 2) / math.gamma(k / 2 + 1)
-N_initial = int(N_initial / volume_ratio)
+# N_initial = int(N_initial / volume_ratio)
 # Generate k-dimensional input data
-if k == 1:
-    x = np.linspace(-1, 1, N_initial).reshape(-1, 1)
-    x = np.sign(x) * (abs(x)**(1/exponent))
-else:
-    # Generate random samples in hypercube
-    # x = np.random.uniform(-1, 1, (N_initial, k))
-    base_linspace = np.linspace(-1, 1, int(round(N_initial**(1/k))))
-    base_linspace = np.sign(base_linspace) * (abs(base_linspace)**(1/exponent))
+# Generate random samples in hypercube
+# x = np.random.uniform(-1, 1, (N_initial, k))
+base_linspace = np.linspace(-1, 1, int(round(N_initial**(1/k))))
+base_linspace = np.sign(base_linspace) * (abs(base_linspace)**(1/exponent))
 
-    linspaces = [copy.deepcopy(base_linspace) for _ in range(k)]
-    grids = np.meshgrid(*linspaces, indexing='ij')
-    x = np.stack([grid.ravel() for grid in grids], axis=-1)
+linspaces = [copy.deepcopy(base_linspace) for _ in range(k)]
+grids = np.meshgrid(*linspaces, indexing='ij')
+x = np.stack([grid.ravel() for grid in grids], axis=-1)
 
 # Filter to keep only points inside unit sphere
-norms = np.linalg.norm(x, axis=1)
-inside_sphere = norms <= 1.0
+norms = np.linalg.norm(x, ord=1, axis=1)
+inside_sphere = norms <= 1.8
 x = x[inside_sphere]
 N = len(x)
 
@@ -46,12 +45,18 @@ print(f"Retention rate: {N/N_initial:.2%}")
 # Target function: generalized to k dimensions
 # Compute L2 norm for multi-dimensional case
 x_norm = np.linalg.norm(x, axis=1, keepdims=True)
-y = np.cos(np.pi * x_norm**exponent * 20)# + 2.71828**(decay_rate * x_norm) * 2
+# y = np.cos(np.pi * x_norm**exponent * 20)# + 2.71828**(decay_rate * x_norm) * 2
+# y = np.cos(np.pi * x[0]**exponent * 10)# + 2.71828**(decay_rate * x_norm) * 2
+y = np.cos(np.pi * np.sign(x)*np.abs(x)**exponent * 7)
+
 
 # Convert to PyTorch tensors
 X = torch.from_numpy(x).float()
 Y = torch.from_numpy(y).float()
-activation = nn.GELU
+
+Y = Y.sum(dim=1)
+activation = nn.LeakyReLU
+
 
 class Net(nn.Module):
     def __init__(self, input_size, hidden_layer_width, num_hidden_layers, output_size):
@@ -96,7 +101,7 @@ criterion = nn.MSELoss()
 #         for epoch in range(num_epochs):
 #             optimizer.zero_grad()
 #             outputs = model(X)
-#             loss = criterion(outputs, Y)
+#             loss = criterion(outputs[:,0], Y)
 #             loss.backward()
 #             optimizer.step()
 
@@ -115,26 +120,28 @@ fig, axes = plt.subplots(2, 3, figsize=(15, 10))
 axes = axes.ravel()
 
 # Compute norms for all samples (already filtered to unit sphere)
-norms = np.linalg.norm(x, axis=1)
-max_norm = 1.0  # We know max norm is 1 since we filtered
+norms = np.linalg.norm(x, ord=1, axis=1)
+# max_norm = 1.8  # We know max norm is 1 since we filtered
 
 for i, model in enumerate(best_models):
     if model is None:
         model = Net(input_size=k, hidden_layer_width=hidden_layer_width, 
                    num_hidden_layers=i, output_size=1)
         model.load_state_dict(torch.load(f"best_model_{i}_dim{k}.pt", map_location=torch.device('cpu')))
-    
+        print(sum(p.numel() for p in model.parameters()))
     model.eval()
     ax = axes[i]
     
     # Get predictions and compute squared errors
     with torch.no_grad():
-        predictions = model(X).numpy()
-    squared_errors = (predictions - y) ** 2
+        predictions = model(X)
+    squared_errors = ((predictions[:,0] - Y) ** 2).numpy()
     
     # Create dictionaries for cumulative values
     cumulative_samples = defaultdict(int)
     cumulative_loss = defaultdict(float)
+    norm_samples = defaultdict(int)
+    norm_loss = defaultdict(float)
     
     # Sort by norm for efficient cumulative computation
     sorted_indices = np.argsort(norms)
@@ -142,46 +149,54 @@ for i, model in enumerate(best_models):
     # Build cumulative dictionaries
     running_count = 0
     running_loss = 0.0
+
     
     for idx in sorted_indices:
         norm_val = norms[idx]
         norm_rounded = round(norm_val, 2)
+        norm_very_rounded = math.ceil(norm_val * 10) / 10
+
+        sample_loss = squared_errors[idx]
         
         running_count += 1
-        running_loss += squared_errors[idx, 0]
+        running_loss += sample_loss
         
+        if norm_very_rounded not in norm_samples:
+            norm_samples[norm_very_rounded] = 0
+            norm_loss[norm_very_rounded] = 0
+
+        norm_samples[norm_very_rounded] += 1
+        norm_loss[norm_very_rounded] += sample_loss
         cumulative_samples[norm_rounded] = running_count
         cumulative_loss[norm_rounded] = running_loss
     
     # Extract sorted norm values and corresponding cumulative values
     norm_values = sorted(cumulative_samples.keys())
-    sample_counts = [cumulative_samples[n] for n in norm_values]
-    loss_values = [cumulative_loss[n] for n in norm_values]
+    norm_values_very_rounded = sorted(norm_samples.keys())
+    mean_loss_values = [norm_loss[n]/norm_samples[n] for n in norm_values_very_rounded]
+    norm_samples_values = [norm_samples[n] for n in norm_values_very_rounded]
+
+    norm_samples_normalized = np.array(norm_samples_values) / max(norm_samples_values)
     
-    # Normalize both curves to [0, 1]
-    sample_counts_normalized = np.array(sample_counts) / max(sample_counts)
-    loss_values_normalized = np.array(loss_values) / max(loss_values)
+    # loss_values_normalized = np.array(mean_loss_values) / max(mean_loss_values)
     
     # Plot both curves
-    ax.plot(norm_values, sample_counts_normalized, 'b-', linewidth=2, 
-            label='Cumulative samples', alpha=0.8)
-    ax.plot(norm_values, loss_values_normalized, 'r-', linewidth=2, 
-            label='Cumulative loss', alpha=0.8)
+    ax.plot(norm_values_very_rounded, mean_loss_values, 'b-', linewidth=2, 
+            label='Mean Loss', alpha=0.8)
+    ax.plot(norm_values_very_rounded, norm_samples_normalized, 'r-', linewidth=2, 
+            label='Nb of Samples', alpha=0.8)
     
     # Add theoretical curve for reference (norm^k normalized)
     # For uniform distribution in k-dimensional ball, CDF ~ r^k
-    theoretical_curve = np.array(norm_values) ** k
-    ax.plot(norm_values, theoretical_curve, 'k--', linewidth=1, 
-            label=f'Theoretical (r^{k})', alpha=0.5)
     
     
     # Styling
     ax.set_xlabel('Radius (r)')
-    ax.set_ylabel('Normalized cumulative value')
-    ax.set_title(f'{i+1} Hidden Layer(s)\nMSE: {max(loss_values)/max(sample_counts):.4f}')
+    ax.set_ylabel('MSE')
+    ax.set_title(f'{i+1} Hidden Layer(s)\nMSE: {sum(norm_loss.values())/sum(norm_samples.values()):.4f}')
     ax.grid(True, alpha=0.3)
-    ax.set_xlim(0, 1)
-    ax.set_ylim(0, 1.05)
+    # ax.set_xlim(0, 1)
+    # ax.set_ylim(0, 1.05)
     
     if i == 0:
         ax.legend(loc='lower right', fontsize=8)
@@ -190,7 +205,7 @@ for i, model in enumerate(best_models):
 for j in range(i + 1, len(axes)):
     fig.delaxes(axes[j])
 
-plt.suptitle(f'Edge Bias Visualization: {k}D Input → 1D Output (Unit Sphere)\n',
+plt.suptitle(f'Edge Bias Visualization: {k}D Input → 1D Output\n',
              fontsize=14)
 plt.tight_layout()
 plt.show()
