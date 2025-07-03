@@ -154,7 +154,7 @@ for i, model in enumerate(best_models):
     for idx in sorted_indices:
         norm_val = norms[idx]
         norm_rounded = round(norm_val, 2)
-        norm_very_rounded = math.ceil(norm_val * 10) / 10
+        norm_very_rounded = math.ceil(norm_val * 100) / 100
 
         sample_loss = squared_errors[idx]
         
@@ -176,30 +176,31 @@ for i, model in enumerate(best_models):
     mean_loss_values = [norm_loss[n]/norm_samples[n] for n in norm_values_very_rounded]
     norm_samples_values = [norm_samples[n] for n in norm_values_very_rounded]
 
-    norm_samples_normalized = np.array(norm_samples_values) / max(norm_samples_values)
-    
-    # loss_values_normalized = np.array(mean_loss_values) / max(mean_loss_values)
-    
-    # Plot both curves
+    # Plot loss on primary y-axis
     ax.plot(norm_values_very_rounded, mean_loss_values, 'b-', linewidth=2, 
             label='Mean Loss', alpha=0.8)
-    ax.plot(norm_values_very_rounded, norm_samples_normalized, 'r-', linewidth=2, 
+
+    # Create secondary y-axis for number of samples
+    ax2 = ax.twinx()
+    ax2.plot(norm_values_very_rounded, norm_samples_values, 'r-', linewidth=2, 
             label='Nb of Samples', alpha=0.8)
-    
-    # Add theoretical curve for reference (norm^k normalized)
-    # For uniform distribution in k-dimensional ball, CDF ~ r^k
-    
-    
-    # Styling
+
+    # Styling for primary axis
     ax.set_xlabel('Radius (r)')
-    ax.set_ylabel('MSE')
+    ax.set_ylabel('MSE', color='b')
+    ax.tick_params(axis='y', labelcolor='b')
     ax.set_title(f'{i+1} Hidden Layer(s)\nMSE: {sum(norm_loss.values())/sum(norm_samples.values()):.4f}')
     ax.grid(True, alpha=0.3)
-    # ax.set_xlim(0, 1)
-    # ax.set_ylim(0, 1.05)
-    
+
+    # Styling for secondary axis
+    ax2.set_ylabel('Nb of Samples', color='r')
+    ax2.tick_params(axis='y', labelcolor='r')
+
+    # Combine legends from both axes
     if i == 0:
-        ax.legend(loc='lower right', fontsize=8)
+        lines1, labels1 = ax.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax.legend(lines1 + lines2, labels1 + labels2, loc='lower right', fontsize=8)
 
 # Remove empty subplots if any
 for j in range(i + 1, len(axes)):
